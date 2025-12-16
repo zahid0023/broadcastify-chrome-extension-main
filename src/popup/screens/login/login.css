@@ -1,0 +1,89 @@
+/* Reset */
+* {
+  box-sizing: border-box;
+  font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
+               "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Popup background */
+body {
+  margin: 0;
+  background: #0f172a; /* dark slate */
+}
+
+/* Login card */
+.login-container {
+  width: 320px;
+  padding: 22px 20px;
+  margin: 10px auto;
+  background: linear-gradient(145deg, #111827, #020617);
+  border-radius: 12px;
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+/* Title */
+.login-container h2 {
+  margin: 0 0 18px;
+  text-align: center;
+  color: #e5e7eb;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+
+/* Inputs */
+.login-container input {
+  width: 100%;
+  padding: 11px 12px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  border: 1px solid #1f2933;
+  background: #020617;
+  color: #e5e7eb;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.login-container input::placeholder {
+  color: #6b7280;
+}
+
+.login-container input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
+}
+
+/* Button */
+.login-container button {
+  width: 100%;
+  margin-top: 6px;
+  padding: 11px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.login-container button:hover {
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+}
+
+.login-container button:active {
+  transform: translateY(1px);
+}
+
+/* Error message */
+.error {
+  min-height: 14px;
+  margin-bottom: 10px;
+  text-align: center;
+  color: #ef4444;
+  font-size: 12px;
+}
