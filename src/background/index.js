@@ -1,12 +1,32 @@
 console.log("Background loaded");
 
 // --- Configuration ---
-const GEMINI_API_KEY = "AIzaSyCuxwOg9dvDELmcAYeXb1776SGG_kNAFW4";
+const GEMINI_API_KEY = "AIzaSyB2Z7h9p5TVMyUmSDFyOf6LHxSbnbACE40";
 const GENERATE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 // --- Helper to send status updates to popup ---
 function sendStatus(text) {
-  chrome.runtime.sendMessage({ action: "updateStatus", text });
+  // 1) Persist status
+  chrome.storage.local.set({ captureStatus: text });
+
+  // 2) Try live update (works only if popup is open)
+  chrome.runtime.sendMessage({
+    action: "updateStatus",
+    text
+  });
+}
+
+function downloadSummary(text) {
+  const filename = `gemini-summary-${Date.now()}.txt`;
+
+  const dataUrl =
+    "data:text/plain;charset=utf-8," + encodeURIComponent(text);
+
+  chrome.downloads.download({
+    url: dataUrl,
+    filename,
+    saveAs: true
+  });
 }
 
 // --- Generate transcription + summary using Gemini ---
@@ -121,10 +141,19 @@ chrome.runtime.onMessage.addListener(async (msg, sender, sendResponse) => {
 
     try {
       const result = await generateSummaryInline(base64Data, mimeType);
+      downloadSummary(result);
       console.log(result)
       chrome.runtime.sendMessage({ action: "summaryResult", result });
     } catch (err) {
-      chrome.runtime.sendMessage({ action: "error", message: err.message });
+      const message = err.message || "Unknown Gemini error";
+
+      console.error("Gemini error:", message);
+
+      // Send error to popup for alert
+      chrome.runtime.sendMessage({
+        action: "SHOW_ALERT",
+        message
+      });
     }
   }
   return false;

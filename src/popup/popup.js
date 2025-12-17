@@ -2,6 +2,13 @@ document.addEventListener("DOMContentLoaded", () => {
     chrome.storage.local.get(["isLoggedIn"], (res) => {
         loadScreen(res.isLoggedIn ? "capture" : "login");
     });
+
+    chrome.storage.local.get("captureStatus", (data) => {
+        const statusEl = document.getElementById("status");
+        if (statusEl && data.captureStatus) {
+            statusEl.textContent = data.captureStatus;
+        }
+    });
 });
 
 async function loadScreen(screen) {
@@ -22,3 +29,9 @@ async function loadScreen(screen) {
     script.src = `screens/${screen}/${screen}.js`;
     document.body.appendChild(script);
 }
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.action === "SHOW_ALERT") {
+    alert("Error:\n\n" + msg.message);
+  }
+});
