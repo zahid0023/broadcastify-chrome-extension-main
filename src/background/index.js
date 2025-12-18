@@ -1,7 +1,7 @@
 console.log("Background loaded");
 
 // --- Configuration ---
-const GEMINI_API_KEY = "AIzaSyB2Z7h9p5TVMyUmSDFyOf6LHxSbnbACE40";
+const GEMINI_API_KEY = "AIzaSyArMjOWMTmOBMnvY4zzY2vvmTa8hAA7SnQ";
 const GENERATE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 // --- Helper to send status updates to popup ---
@@ -16,11 +16,13 @@ function sendStatus(text) {
   });
 }
 
-function downloadSummary(text) {
-  const filename = `gemini-summary-${Date.now()}.txt`;
+function downloadSummary(data) {
+  const filename = `gemini-summary-${Date.now()}.json`;
+
+  const jsonText = JSON.stringify(data, null, 2);
 
   const dataUrl =
-    "data:text/plain;charset=utf-8," + encodeURIComponent(text);
+    "data:application/json;charset=utf-8," + encodeURIComponent(jsonText);
 
   chrome.downloads.download({
     url: dataUrl,
@@ -42,8 +44,47 @@ async function generateSummaryInline(base64Data, mimeType) {
             },
           },
           {
-            text: "Transcribe the full audio content. After the transcription, write a concise, three-point executive summary. Format the output with the transcription first, followed by a '---' separator, and then the summary.",
-          },
+            text: `
+                  You are an information extraction system.
+
+                  TASKS:
+                  1. Transcribe the full audio content accurately.
+                  2. Generate a concise 3-point executive summary.
+                  3. Extract ALL contact-related information mentioned in the speech.
+
+                  OUTPUT FORMAT (STRICT JSON ONLY — no markdown, no commentary):
+
+                  {
+                    "transcription": "full transcription text",
+                    "summary": [
+                      "point 1",
+                      "point 2",
+                      "point 3"
+                    ],
+                    "contact": {
+                      "first_name": null,
+                      "last_name": null,
+                      "name": null,
+                      "email": null,
+                      "phone": null,
+                      "gender": null,
+                      "website": null,
+                      "address1": null,
+                      "city": null,
+                      "state": null,
+                      "postal_code": null,
+                      "timezone": null,
+                    }
+                  }
+
+                  RULES:
+                  - Use null if a value is not explicitly mentioned.
+                  - Do NOT guess or infer values.
+                  - Extract phone numbers and emails exactly as spoken.
+                  - If a full name is mentioned, also populate first_name and last_name.
+                  - Return valid JSON only.
+                  `
+          }
         ],
       },
     ],
@@ -66,7 +107,27 @@ async function generateSummaryInline(base64Data, mimeType) {
 
   if (data.error) throw new Error(data.error.message || "Gemini API error");
 
-  return data.candidates[0].content.parts[0].text;
+  const rawText = data.candidates[0].content.parts[0].text;
+
+  let parsed;
+  try {
+    parsed = extractJson(rawText);
+  } catch (e) {
+    console.error("Invalid JSON from Gemini:", rawText);
+    throw new Error("Gemini returned invalid JSON");
+  }
+
+  return parsed;
+}
+
+function extractJson(text) {
+  // Remove ```json and ``` wrappers if present
+  const cleaned = text
+    .replace(/```json\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
+
+  return JSON.parse(cleaned);
 }
 
 // --- Ensure Offscreen document exists for audio capture ---
