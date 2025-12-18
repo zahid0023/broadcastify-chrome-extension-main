@@ -1,7 +1,7 @@
 console.log("Background loaded");
 
 // --- Configuration ---
-const GEMINI_API_KEY = "AIzaSyCuxwOg9dvDELmcAYeXb1776SGG_kNAFW4";
+const GEMINI_API_KEY = "AIzaSyBfryv4jk1sU_LqGRHrktl-ylcU96hcShk";
 const GENERATE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 // --- Per-tab recording state tracking ---
@@ -230,6 +230,56 @@ chrome.runtime.onMessage.addListener(async (msg, sender, sendResponse) => {
       });
     }
   }
+
+  // 5) Download transcription as text file
+  if (msg.action === "downloadTranscription") {
+    try {
+      const { result, tabId } = msg;
+
+      if (!result) {
+        return sendResponse({
+          success: false,
+          error: "No transcription result provided",
+        });
+      }
+
+      // Generate filename with timestamp
+      const now = new Date();
+      const timestamp = now.toISOString().replace(/[:.]/g, "-").slice(0, -5);
+      const filename = `transcription_${timestamp}.txt`;
+
+      // Create data URL from transcription text
+      const dataUrl = `data:text/plain;charset=utf-8,${encodeURIComponent(
+        result
+      )}`;
+
+      // Download the file
+      chrome.downloads.download(
+        {
+          url: dataUrl,
+          filename: filename,
+          saveAs: false,
+        },
+        (downloadId) => {
+          if (chrome.runtime.lastError) {
+            console.error("Download error:", chrome.runtime.lastError);
+            sendResponse({
+              success: false,
+              error: chrome.runtime.lastError.message,
+            });
+          } else {
+            console.log("Download started with ID:", downloadId);
+            sendResponse({ success: true, downloadId });
+          }
+        }
+      );
+    } catch (err) {
+      console.error("Error downloading transcription:", err);
+      sendResponse({ success: false, error: err.message });
+    }
+    return true;
+  }
+
   return false;
 });
 
