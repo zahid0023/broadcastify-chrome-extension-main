@@ -1,7 +1,7 @@
 console.log("Background loaded");
 
 // --- Configuration ---
-const GEMINI_API_KEY = "AIzaSyArMjOWMTmOBMnvY4zzY2vvmTa8hAA7SnQ";
+const GEMINI_API_KEY = "AIzaSyDQrA2mcvIxHULJvejNWPNg_12Sq41S8N4";
 const GENERATE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 // --- Helper to send status updates to popup ---
@@ -112,7 +112,7 @@ async function generateSummaryInline(base64Data, mimeType) {
   let parsed;
   try {
     parsed = extractJson(rawText);
-  } catch (e) {
+  } catch (err) {
     console.error("Invalid JSON from Gemini:", rawText);
     throw new Error("Gemini returned invalid JSON");
   }
@@ -129,6 +129,109 @@ function extractJson(text) {
 
   return JSON.parse(cleaned);
 }
+
+function normalizePhone(rawPhone) {
+  if (!rawPhone || typeof rawPhone !== "string") return null;
+
+  // Step 1: Lowercase and trim
+  let text = rawPhone.toLowerCase().trim();
+
+  // Step 2: Convert spoken words to digits/symbols
+  const replacements = {
+    "zero": "0",
+    "one": "1",
+    "two": "2",
+    "three": "3",
+    "four": "4",
+    "five": "5",
+    "six": "6",
+    "seven": "7",
+    "eight": "8",
+    "nine": "9",
+    "plus": "+",
+    "double zero": "00"
+  };
+
+  for (const [word, digit] of Object.entries(replacements)) {
+    text = text.replace(new RegExp(`\\b${word}\\b`, "g"), digit);
+  }
+
+  // Step 3: Remove everything except digits and +
+  text = text.replace(/[^0-9+]/g, "");
+
+  // Step 4: Normalize leading 00 → +
+  if (text.startsWith("00")) {
+    text = "+" + text.slice(2);
+  }
+
+  // Step 5: Ensure E.164 style
+  // Default to +1 if no country code (adjust if needed)
+  if (!text.startsWith("+")) {
+    if (text.length === 10) {
+      text = "+1" + text;
+    }
+  }
+
+  // Step 6: Final validation
+  if (!/^\+\d{8,15}$/.test(text)) {
+    return null;
+  }
+
+  return text;
+}
+
+function forceNormalizeUSPhone(rawPhone) {
+  if (!rawPhone || typeof rawPhone !== "string") return null;
+
+  let text = rawPhone.toLowerCase();
+
+  // Convert spoken words to digits
+  const replacements = {
+    "zero": "0",
+    "one": "1",
+    "two": "2",
+    "three": "3",
+    "four": "4",
+    "five": "5",
+    "six": "6",
+    "seven": "7",
+    "eight": "8",
+    "nine": "9",
+    "plus": "",
+    "double zero": "00"
+  };
+
+  for (const [word, digit] of Object.entries(replacements)) {
+    text = text.replace(new RegExp(`\\b${word}\\b`, "g"), digit);
+  }
+
+  // Extract digits only
+  let digits = text.replace(/\D/g, "");
+
+  // Must have at least 10 digits
+  if (digits.length < 10) return null;
+
+  // Take last 10 digits
+  digits = digits.slice(-10);
+
+  // Force NANP compliance
+  let areaCode = digits.slice(0, 3);
+  let exchangeCode = digits.slice(3, 6);
+  const subscriber = digits.slice(6);
+
+  // Fix invalid area code
+  if (areaCode[0] === "0" || areaCode[0] === "1") {
+    areaCode = "213"; // safe default (LA)
+  }
+
+  // Fix invalid exchange code
+  if (exchangeCode[0] === "0" || exchangeCode[0] === "1") {
+    exchangeCode = "555"; // reserved but valid format-wise
+  }
+
+  return `+1${areaCode}${exchangeCode}${subscriber}`;
+}
+
 
 // --- Ensure Offscreen document exists for audio capture ---
 async function ensureOffscreen() {
@@ -202,6 +305,15 @@ chrome.runtime.onMessage.addListener(async (msg, sender, sendResponse) => {
 
     try {
       const result = await generateSummaryInline(base64Data, mimeType);
+
+      if (result.contact?.phone) {
+        result.contact.phone = forceNormalizeUSPhone(result.contact.phone);
+      }
+
+      // Create contact via API
+      const apiResponse = await createContact(result.contact);
+      console.log("Contact created:", apiResponse);
+
       downloadSummary(result);
       console.log(result)
       chrome.runtime.sendMessage({ action: "summaryResult", result });
@@ -219,3 +331,53 @@ chrome.runtime.onMessage.addListener(async (msg, sender, sendResponse) => {
   }
   return false;
 });
+
+function buildContactPayload(contact) {
+  return {
+    first_name: contact.first_name ?? null,
+    last_name: contact.last_name ?? null,
+    name: contact.name ?? null,
+    email: contact.email ?? null,
+    phone: contact.phone ?? null,
+    gender: contact.gender ?? null,
+    address1: contact.address1 ?? null,
+    city: contact.city ?? null,
+    state: contact.state ?? null,
+    postal_code: contact.postal_code ?? null,
+    timezone: contact.timezone ?? null,
+
+    // REQUIRED / COMMON FIELDS (adjust as needed)
+    location_id: "S2SwEv6vg4Z8X369xNnM",
+
+    tags: ["gemini", "audio-capture"]
+  };
+}
+
+async function createContact(contact) {
+  const MASSMARKETAI_TOKEN = "yHZ8SO5GZbDQbHwnCedQdd08S4Xaes-2hKaHM4O8QMs";
+
+  const payload = buildContactPayload(contact);
+
+  const response = await fetch(
+    "https://api.massmarketai.com/api/v1/contacts/create/contact?version=2021-04-15&request-id=1234",
+    {
+      method: "POST",
+      headers: {
+        "Accept": "*/*",
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${MASSMARKETAI_TOKEN}`
+      },
+      body: JSON.stringify(payload)
+    }
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data?.message || "Failed to create contact"
+    );
+  }
+
+  return data;
+}
