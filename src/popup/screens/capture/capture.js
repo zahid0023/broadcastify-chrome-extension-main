@@ -2,7 +2,6 @@
   const startBtn = document.getElementById("start");
   const finishBtn = document.getElementById("finish");
   const cancelBtn = document.getElementById("cancel");
-  const downloadBtn = document.getElementById("download");
   const statusEl = document.getElementById("status");
   const timeRemEl = document.getElementById("timeRem");
 
@@ -15,7 +14,6 @@
   let isCapturing = false;
   let startTime = null;
   let timerInterval = null;
-  let transcriptionResult = null;
   const MAX_CAPTURE_TIME = 30 * 60 * 1000;
 
   // Get current tab ID
@@ -72,10 +70,6 @@
       ? "Capture in progress..."
       : "Ready to capture";
     if (!isCapturing) timeRemEl.textContent = "";
-    // Hide download button when not recording and no transcription available
-    if (downloadBtn && !transcriptionResult) {
-      downloadBtn.style.display = "none";
-    }
   }
 
   function updateTimeRemaining() {
@@ -110,12 +104,6 @@
         statusEl.textContent = "Error: Could not get current tab";
         return;
       }
-    }
-
-    // Clear previous transcription result
-    transcriptionResult = null;
-    if (downloadBtn) {
-      downloadBtn.style.display = "none";
     }
 
     try {
@@ -175,9 +163,6 @@
   startBtn.addEventListener("click", startCapture);
   finishBtn.addEventListener("click", stopCapture);
   cancelBtn.addEventListener("click", stopCapture);
-  if (downloadBtn) {
-    downloadBtn.addEventListener("click", downloadTranscription);
-  }
 
   // Initialize: Get current tab ID and load its recording state
   (async () => {
@@ -189,38 +174,6 @@
     }
   })();
 
-  // Download transcription as text file
-  async function downloadTranscription() {
-    if (!transcriptionResult) {
-      statusEl.textContent = "No transcription available to download";
-      return;
-    }
-
-    try {
-      const response = await new Promise((resolve) => {
-        chrome.runtime.sendMessage(
-          {
-            action: "downloadTranscription",
-            result: transcriptionResult,
-            tabId: currentTabId,
-          },
-          resolve
-        );
-      });
-
-      if (response && response.success) {
-        statusEl.textContent = "Download started!";
-      } else {
-        statusEl.textContent = `Download failed: ${
-          response?.error || "Unknown error"
-        }`;
-      }
-    } catch (err) {
-      console.error("Error downloading transcription:", err);
-      statusEl.textContent = "Error downloading transcription";
-    }
-  }
-
   chrome.runtime.onMessage.addListener((msg) => {
     // Only process messages for this tab
     if (msg.tabId && msg.tabId !== currentTabId) {
@@ -230,19 +183,9 @@
     if (msg.action === "updateStatus") {
       statusEl.textContent = msg.text;
     } else if (msg.action === "summaryResult") {
-      transcriptionResult = msg.result;
       statusEl.textContent = "Transcription complete!";
-
-      // Show download button
-      if (downloadBtn) {
-        downloadBtn.style.display = "block";
-      }
-
-      // Auto-download the transcription
-      downloadTranscription();
     } else if (msg.action === "error") {
       statusEl.textContent = `Error: ${msg.message}`;
-      transcriptionResult = null;
     }
   });
 })();

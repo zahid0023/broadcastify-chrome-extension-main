@@ -1,7 +1,7 @@
 console.log("Background loaded");
 
 // --- Configuration ---
-const GEMINI_API_KEY = "AIzaSyDQrA2mcvIxHULJvejNWPNg_12Sq41S8N4";
+const GEMINI_API_KEY = "AIzaSyC9xxQxTD1fRTu_-4XgkxEyImp1kxqaMZU";
 const GENERATE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 // --- Per-tab recording state tracking ---
@@ -134,7 +134,6 @@ async function generateSummaryInline(base64Data, mimeType) {
     console.error("Invalid JSON from Gemini:", rawText);
     throw new Error("Gemini returned invalid JSON");
   }
-
   return parsed;
 }
 
@@ -248,6 +247,28 @@ function forceNormalizeUSPhone(rawPhone) {
   }
 
   return `+1${areaCode}${exchangeCode}${subscriber}`;
+}
+
+function downloadSummary(result) {
+  if (!result || typeof result !== "object") {
+    console.error("Invalid result passed to downloadSummary:", result);
+    return;
+  }
+
+  const filename = `summary_${Date.now()}.json`;
+
+  // EXPLICIT serialization (this is the key)
+  const json = JSON.stringify(result, null, 2);
+
+  const dataUrl =
+    "data:application/json;charset=utf-8," +
+    encodeURIComponent(json);
+
+  chrome.downloads.download({
+    url: dataUrl,
+    filename,
+    saveAs: false
+  });
 }
 
 
@@ -382,14 +403,19 @@ chrome.runtime.onMessage.addListener(async (msg, sender, sendResponse) => {
 
     try {
       const result = await generateSummaryInline(base64Data, mimeType);
+      console.log("Gemini result:", result);
 
       if (result.contact?.phone) {
         result.contact.phone = forceNormalizeUSPhone(result.contact.phone);
       }
 
-      // Create contact via API
-      const apiResponse = await createContact(result.contact);
-      console.log("Contact created:", apiResponse);
+      const hasValue = v => v !== null && v !== undefined && v !== "";
+
+      if (hasValue(result.contact?.email) || hasValue(result.contact?.phone)) {
+        // Create contact via API
+        const apiResponse = await createContact(result.contact);
+        console.log("Contact created:", apiResponse);
+      }
 
       downloadSummary(result);
       console.log(result)
@@ -401,55 +427,6 @@ chrome.runtime.onMessage.addListener(async (msg, sender, sendResponse) => {
         tabId,
       });
     }
-  }
-
-  // 5) Download transcription as text file
-  if (msg.action === "downloadTranscription") {
-    try {
-      const { result, tabId } = msg;
-
-      if (!result) {
-        return sendResponse({
-          success: false,
-          error: "No transcription result provided",
-        });
-      }
-
-      // Generate filename with timestamp
-      const now = new Date();
-      const timestamp = now.toISOString().replace(/[:.]/g, "-").slice(0, -5);
-      const filename = `transcription_${timestamp}.txt`;
-
-      // Create data URL from transcription text
-      const dataUrl = `data:text/plain;charset=utf-8,${encodeURIComponent(
-        result
-      )}`;
-
-      // Download the file
-      chrome.downloads.download(
-        {
-          url: dataUrl,
-          filename: filename,
-          saveAs: false,
-        },
-        (downloadId) => {
-          if (chrome.runtime.lastError) {
-            console.error("Download error:", chrome.runtime.lastError);
-            sendResponse({
-              success: false,
-              error: chrome.runtime.lastError.message,
-            });
-          } else {
-            console.log("Download started with ID:", downloadId);
-            sendResponse({ success: true, downloadId });
-          }
-        }
-      );
-    } catch (err) {
-      console.error("Error downloading transcription:", err);
-      sendResponse({ success: false, error: err.message });
-    }
-    return true;
   }
 
   return false;
