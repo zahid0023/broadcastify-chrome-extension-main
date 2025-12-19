@@ -4,32 +4,50 @@ console.log("Background loaded");
 const GEMINI_API_KEY = "AIzaSyDQrA2mcvIxHULJvejNWPNg_12Sq41S8N4";
 const GENERATE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
+// --- Per-tab recording state tracking ---
+const activeRecordings = new Map(); // Map<tabId, { startTime, isRecording, streamId }>
+
 // --- Helper to send status updates to popup ---
-function sendStatus(text) {
-  // 1) Persist status
-  chrome.storage.local.set({ captureStatus: text });
-
-  // 2) Try live update (works only if popup is open)
-  chrome.runtime.sendMessage({
-    action: "updateStatus",
-    text
-  });
+function sendStatus(text, tabId = null) {
+  chrome.runtime.sendMessage({ action: "updateStatus", text, tabId });
 }
 
-function downloadSummary(data) {
-  const filename = `gemini-summary-${Date.now()}.json`;
-
-  const jsonText = JSON.stringify(data, null, 2);
-
-  const dataUrl =
-    "data:application/json;charset=utf-8," + encodeURIComponent(jsonText);
-
-  chrome.downloads.download({
-    url: dataUrl,
-    filename,
-    saveAs: true
-  });
+// --- Load persisted recording states on startup ---
+async function loadPersistedStates() {
+  try {
+    const data = await chrome.storage.local.get(["activeRecordings"]);
+    if (data.activeRecordings) {
+      Object.entries(data.activeRecordings).forEach(([tabId, state]) => {
+        activeRecordings.set(Number(tabId), state);
+      });
+    }
+  } catch (err) {
+    console.error("Error loading persisted states:", err);
+  }
 }
+
+// --- Persist recording states to storage ---
+async function persistStates() {
+  const states = {};
+  activeRecordings.forEach((state, tabId) => {
+    states[tabId] = state;
+  });
+  await chrome.storage.local.set({ activeRecordings: states });
+}
+
+// --- Cleanup recording state for a tab ---
+function cleanupTabState(tabId) {
+  activeRecordings.delete(tabId);
+  persistStates();
+}
+
+// --- Get recording state for a tab ---
+function getTabRecordingState(tabId) {
+  return activeRecordings.get(tabId) || null;
+}
+
+// Initialize on startup
+loadPersistedStates();
 
 // --- Generate transcription + summary using Gemini ---
 async function generateSummaryInline(base64Data, mimeType) {
@@ -94,7 +112,7 @@ async function generateSummaryInline(base64Data, mimeType) {
     },
   };
 
-  sendStatus("Sending audio to Gemini API...");
+  sendStatus("Sending audio to Gemini API...", null);
 
   const response = await fetch(GENERATE_API_URL, {
     method: "POST",
@@ -252,29 +270,53 @@ chrome.runtime.onMessage.addListener(async (msg, sender, sendResponse) => {
   // 1) Start capture
   if (msg.action === "startCapture") {
     try {
-      const [tab] = await chrome.tabs.query({
-        active: true,
-        currentWindow: true,
-      });
+      let tabId = msg.tabId;
 
-      if (!tab) return sendResponse({ success: false });
+      // If no tabId provided, get active tab
+      if (!tabId) {
+        const [tab] = await chrome.tabs.query({
+          active: true,
+          currentWindow: true,
+        });
+        if (!tab) return sendResponse({ success: false });
+        tabId = tab.id;
+      }
 
-      console.log("Starting capture for tab", tab.id);
+      // Check if tab is already recording
+      if (activeRecordings.has(tabId)) {
+        console.log("Tab", tabId, "is already recording");
+        return sendResponse({
+          success: false,
+          error: "Tab is already recording",
+        });
+      }
+
+      console.log("Starting capture for tab", tabId);
       await ensureOffscreen();
 
       const streamId = await chrome.tabCapture.getMediaStreamId({
-        targetTabId: tab.id,
+        targetTabId: tabId,
       });
+
+      // Store recording state
+      const recordingState = {
+        tabId,
+        startTime: Date.now(),
+        isRecording: true,
+        streamId,
+      };
+      activeRecordings.set(tabId, recordingState);
+      await persistStates();
 
       chrome.runtime.sendMessage({
         action: "RECORD_AUDIO",
         streamId,
-        tabId: tab.id,
+        tabId: tabId,
       });
-      sendResponse({ success: true });
+      sendResponse({ success: true, tabId });
     } catch (err) {
       console.error("StartCapture error:", err);
-      sendResponse({ success: false });
+      sendResponse({ success: false, error: err.message });
     }
 
     return true;
@@ -282,26 +324,61 @@ chrome.runtime.onMessage.addListener(async (msg, sender, sendResponse) => {
 
   // 2) Stop capture
   if (msg.action === "stopCapture") {
-    console.log("Stopping capture");
-    chrome.runtime.sendMessage({
-      action: "STOP_RECORDING"
-    });
-    sendResponse({ success: true });
+    try {
+      let tabId = msg.tabId;
+
+      if (!tabId) {
+        // Fallback to active tab if no tabId provided
+        const [tab] = await chrome.tabs.query({
+          active: true,
+          currentWindow: true,
+        });
+        if (!tab) return sendResponse({ success: false });
+        tabId = tab.id;
+      }
+
+      console.log("Stopping capture for tab", tabId);
+
+      // Cleanup state
+      cleanupTabState(tabId);
+
+      chrome.runtime.sendMessage({
+        action: "STOP_RECORDING",
+        tabId: tabId,
+      });
+      sendResponse({ success: true, tabId });
+    } catch (err) {
+      console.error("StopCapture error:", err);
+      sendResponse({ success: false, error: err.message });
+    }
     return true;
   }
 
-  // 3) Audio is ready → send to Gemini for transcription & summary
+  // 3) Get recording state for a tab
+  if (msg.action === "getRecordingState") {
+    const tabId = msg.tabId;
+    const state = getTabRecordingState(tabId);
+    sendResponse({ success: true, state });
+    return true;
+  }
+
+  // 4) Audio is ready → send to Gemini for transcription & summary
   if (msg.action === "AUDIO_READY") {
     console.log("Background: Audio ready, sending to Gemini...");
 
-    const { base64Data, mimeType } = msg;
+    const { base64Data, mimeType, tabId } = msg;
 
     if (!base64Data) {
       console.error("No audio data received!");
       return;
     }
 
-    chrome.runtime.sendMessage({ action: "updateStatus", text: "Sending to Gemini..." });
+    // Cleanup recording state
+    if (tabId) {
+      cleanupTabState(tabId);
+    }
+
+    sendStatus("Sending to Gemini...", tabId);
 
     try {
       const result = await generateSummaryInline(base64Data, mimeType);
@@ -318,17 +395,63 @@ chrome.runtime.onMessage.addListener(async (msg, sender, sendResponse) => {
       console.log(result)
       chrome.runtime.sendMessage({ action: "summaryResult", result });
     } catch (err) {
-      const message = err.message || "Unknown Gemini error";
-
-      console.error("Gemini error:", message);
-
-      // Send error to popup for alert
       chrome.runtime.sendMessage({
-        action: "SHOW_ALERT",
-        message
+        action: "error",
+        message: err.message,
+        tabId,
       });
     }
   }
+
+  // 5) Download transcription as text file
+  if (msg.action === "downloadTranscription") {
+    try {
+      const { result, tabId } = msg;
+
+      if (!result) {
+        return sendResponse({
+          success: false,
+          error: "No transcription result provided",
+        });
+      }
+
+      // Generate filename with timestamp
+      const now = new Date();
+      const timestamp = now.toISOString().replace(/[:.]/g, "-").slice(0, -5);
+      const filename = `transcription_${timestamp}.txt`;
+
+      // Create data URL from transcription text
+      const dataUrl = `data:text/plain;charset=utf-8,${encodeURIComponent(
+        result
+      )}`;
+
+      // Download the file
+      chrome.downloads.download(
+        {
+          url: dataUrl,
+          filename: filename,
+          saveAs: false,
+        },
+        (downloadId) => {
+          if (chrome.runtime.lastError) {
+            console.error("Download error:", chrome.runtime.lastError);
+            sendResponse({
+              success: false,
+              error: chrome.runtime.lastError.message,
+            });
+          } else {
+            console.log("Download started with ID:", downloadId);
+            sendResponse({ success: true, downloadId });
+          }
+        }
+      );
+    } catch (err) {
+      console.error("Error downloading transcription:", err);
+      sendResponse({ success: false, error: err.message });
+    }
+    return true;
+  }
+
   return false;
 });
 
