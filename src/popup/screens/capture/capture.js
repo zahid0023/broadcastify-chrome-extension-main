@@ -1,4 +1,4 @@
-(function () {
+(function init() {
   const startBtn = document.getElementById("start");
   const finishBtn = document.getElementById("finish");
   const cancelBtn = document.getElementById("cancel");
@@ -6,7 +6,7 @@
   const timeRemEl = document.getElementById("timeRem");
 
   if (!startBtn) {
-    console.error("Capture screen not loaded");
+    console.error("Capture screen DOM not ready");
     return;
   }
 
@@ -16,7 +16,8 @@
   let timerInterval = null;
   const MAX_CAPTURE_TIME = 30 * 60 * 1000;
 
-  // Get current tab ID
+
+
   async function getCurrentTabId() {
     try {
       const [tab] = await chrome.tabs.query({
@@ -30,31 +31,28 @@
     }
   }
 
-  // Load recording state for current tab from background
+  // SAFE state load
   async function loadTabRecordingState() {
     if (!currentTabId) return;
 
-    try {
-      const response = await new Promise((resolve) => {
-        chrome.runtime.sendMessage(
-          { action: "getRecordingState", tabId: currentTabId },
-          resolve
-        );
-      });
-
-      if (response && response.success && response.state) {
-        isCapturing = response.state.isRecording;
-        startTime = response.state.startTime;
-
-        if (isCapturing && startTime) {
-          startTimer();
+    const response = await new Promise((resolve) => {
+      chrome.runtime.sendMessage(
+        { action: "getRecordingState", tabId: currentTabId },
+        (res) => {
+          if (chrome.runtime.lastError) return resolve(null);
+          resolve(res);
         }
-      } else {
-        isCapturing = false;
-        startTime = null;
+      );
+    });
+
+    if (response && response.success && response.state) {
+      isCapturing = response.state.isRecording;
+      startTime = response.state.startTime;
+
+      if (isCapturing && startTime) {
+        startTimer();
       }
-    } catch (err) {
-      console.error("Error loading recording state:", err);
+    } else {
       isCapturing = false;
       startTime = null;
     }
@@ -66,9 +64,11 @@
     startBtn.style.display = isCapturing ? "none" : "block";
     finishBtn.style.display = isCapturing ? "block" : "none";
     cancelBtn.style.display = isCapturing ? "block" : "none";
+
     statusEl.textContent = isCapturing
       ? "Capture in progress..."
       : "Ready to capture";
+
     if (!isCapturing) timeRemEl.textContent = "";
   }
 
@@ -94,9 +94,12 @@
   function startTimer() {
     clearInterval(timerInterval);
     timerInterval = setInterval(updateTimeRemaining, 1000);
-    updateTimeRemaining(); // Update immediately
+    updateTimeRemaining();
   }
 
+  // ----------------------------
+  //  START CAPTURE
+  // ----------------------------
   async function startCapture() {
     if (!currentTabId) {
       currentTabId = await getCurrentTabId();
@@ -106,33 +109,30 @@
       }
     }
 
-    try {
-      const response = await new Promise((resolve) => {
-        chrome.runtime.sendMessage(
-          { action: "startCapture", tabId: currentTabId },
-          resolve
-        );
-      });
+    //  UI UPDATE
+    isCapturing = true;
+    startTime = Date.now();
+    startTimer();
+    updateUI();
 
-      if (response && response.success) {
-        // Reload state from background to get actual startTime stored there
-        await loadTabRecordingState();
-        // State and UI will be updated by loadTabRecordingState
-      } else {
-        isCapturing = false;
-        startTime = null;
-        statusEl.textContent = response?.error || "Failed to start capture";
-        updateUI();
+    // Fire-and-forget message (NO await)
+    chrome.runtime.sendMessage(
+      { action: "startCapture", tabId: currentTabId },
+      () => {
+        // Popup may close — ignore safely
+        if (chrome.runtime.lastError) return;
       }
-    } catch (err) {
-      console.error("Error starting capture:", err);
-      isCapturing = false;
-      startTime = null;
-      statusEl.textContent = "Error starting capture";
-      updateUI();
-    }
+    );
+
+    //  re-sync if popup stays open
+    setTimeout(() => {
+      loadTabRecordingState().catch(() => {});
+    }, 300);
   }
 
+  // ----------------------------
+  //  STOP CAPTURE
+  // ----------------------------
   async function stopCapture() {
     if (!currentTabId) {
       currentTabId = await getCurrentTabId();
@@ -145,26 +145,23 @@
     clearInterval(timerInterval);
     isCapturing = false;
     startTime = null;
-
-    try {
-      await new Promise((resolve) => {
-        chrome.runtime.sendMessage(
-          { action: "stopCapture", tabId: currentTabId },
-          resolve
-        );
-      });
-    } catch (err) {
-      console.error("Error stopping capture:", err);
-    }
-
     updateUI();
+
+    //  Fire-and-forget (NO await)
+    chrome.runtime.sendMessage(
+      { action: "stopCapture", tabId: currentTabId },
+      () => {
+        if (chrome.runtime.lastError) return;
+      }
+    );
   }
+
 
   startBtn.addEventListener("click", startCapture);
   finishBtn.addEventListener("click", stopCapture);
   cancelBtn.addEventListener("click", stopCapture);
 
-  // Initialize: Get current tab ID and load its recording state
+
   (async () => {
     currentTabId = await getCurrentTabId();
     if (currentTabId) {
@@ -175,10 +172,7 @@
   })();
 
   chrome.runtime.onMessage.addListener((msg) => {
-    // Only process messages for this tab
-    if (msg.tabId && msg.tabId !== currentTabId) {
-      return;
-    }
+    if (msg.tabId && msg.tabId !== currentTabId) return;
 
     if (msg.action === "updateStatus") {
       statusEl.textContent = msg.text;

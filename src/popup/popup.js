@@ -24,10 +24,17 @@ async function loadScreen(screen) {
     const res = await fetch(`screens/${screen}/${screen}.html`);
     root.innerHTML = await res.text();
 
-    // Load JS
-    const script = document.createElement("script");
-    script.src = `screens/${screen}/${screen}.js`;
-    document.body.appendChild(script);
+
+    // Remove previous screen script if any
+const oldScript = document.getElementById("screen-script");
+if (oldScript) oldScript.remove();
+
+// Load JS
+const script = document.createElement("script");
+script.id = "screen-script";
+script.src = `screens/${screen}/${screen}.js`;
+document.body.appendChild(script);
+
 }
 
 chrome.runtime.onMessage.addListener((msg) => {
