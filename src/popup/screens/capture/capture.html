@@ -1,23 +1,36 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
   <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Capture & Transcribe</title>
-    <script src="popup.js"></script>
-    <link rel="stylesheet" href="popup.css" type="text/css" />
+    <link rel="stylesheet" href="capture.css" type="text/css">
+    <script src="popup.js" defer></script>
   </head>
   <body>
     <div class="header">
-      <img src="../assets/logo.png" />
+      <img src="../assets/logo.png" alt="Broadcastify Logo">
       <h1>Capture & Transcribe</h1>
     </div>
-    <div id="status"></div>
-    <div id="timeRem"></div>
-    <div class="buttonContainer">
-      <div class="button" id="start">Start Capture</div>
-      <div class="button" id="finish">Save Capture</div>
-      <div class="button" id="cancel">Cancel Capture</div>
-      <div class="button" id="download" style="display: none">
-        Download Transcription
+
+    <div id="status" class="status-container"></div>
+    <div id="timeRem" class="time-remaining"></div>
+
+    <div class="button-container">
+      <button type="button" class="button" id="start">
+        Start Capture
+      </button>
+
+      <div class="action-buttons">
+        <button type="button" class="button" id="finish">
+          Save
+        </button>
+        
+        <button type="button" class="button" id="cancel">
+          Cancel
+        </button>
       </div>
+
     </div>
   </body>
 </html>
