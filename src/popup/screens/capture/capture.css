@@ -1,18 +1,22 @@
+/* ===== Base Styles ===== */
 body, h2 {
   font-family: Ubuntu, sans-serif;
 }
 
 body {
-  margin: 10px 15px 5px 15px;
+  margin: 10px 15px 5px;
 }
 
-#status, #timeRem {
+/* ===== Status Display ===== */
+#status,
+#timeRem {
   margin: 10px auto;
   text-align: center;
   font-size: 20px;
   white-space: nowrap;
 }
 
+/* ===== Header Styles ===== */
 .header {
   display: flex;
   align-items: center;
@@ -23,65 +27,67 @@ body {
 
 .header img {
   height: 64px;
-  margin: 0 20px 0 0;
+  margin-right: 20px;
 }
 
-ul {
-  font-size: 16px;
-  font-weight: bold;
-  list-style: none;
-  padding: 0;
-}
-
-li {
-  font-size: 14px;
-  font-weight: normal;
-  white-space: nowrap;
-  margin: 0 0 0 5px;
-}
-
-.extra {
-  font-family: sans-serif;
-  white-space: nowrap;
-  font-style: italic;
-  margin: 3px;
-}
-
-.links {
+/* ===== Button Container ===== */
+.button-container {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  font-family: sans-serif;
+  gap: 10px;
+  margin: 8px auto;
+  width: 100%;
+  max-width: 250px;
+  padding: 0 10px;
+  box-sizing: border-box;
 }
 
-.links p {
-  color: blue;
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-.buttonContainer {
+/* ===== Action Buttons Group ===== */
+.action-buttons {
   display: flex;
-  justify-content: space-around;
+  gap: 15px;
+  width: 100%;
+  justify-content: center;
+  margin: 5px 0;
+  flex-wrap: wrap;
 }
 
+/* ===== Base Button Styles ===== */
 .button {
-  display: none;
-  text-align: center;
-  padding: 10px 20px;
-  border: none;
-  font-size: 16px;
+  /* Layout */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  min-width: 80px;
+  max-width: 100%;
+  margin: 0;
+  padding: 5px 15px;
+  box-sizing: border-box;
+
+  /* Typography */
+  font-family: 'Ubuntu', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
   font-weight: 600;
-  cursor: pointer;
-  border-radius: 8px;
   color: white;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+
+  /* Visual */
   background: linear-gradient(135deg, #4a6bff, #8a2be2);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-  transition: all 0.3s ease;
-  min-width: 120px;
-  margin: 0 5px;
+  border: none;
+  border-radius: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  overflow: hidden;
+  transition: all 0.2s ease;
+  flex: 0 0 auto;
 }
 
+/* Button States */
 .button:hover {
   background: linear-gradient(135deg, #3a5bef, #7a1ad9);
   transform: translateY(-2px);
@@ -93,8 +99,13 @@ li {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
-/* Specific button colors */
+/* ===== Specific Button Styles ===== */
 #start {
+  width: 160px;
+  height: 40px;
+  padding: 6px 16px;
+  font-size: 15px;
+  border-radius: 22px;
   background: linear-gradient(135deg, #4CAF50, #45a049);
 }
 
@@ -103,6 +114,9 @@ li {
 }
 
 #finish {
+  min-width: 90px;
+  padding: 5px 12px;
+  border-radius: 18px;
   background: linear-gradient(135deg, #2196F3, #1976D2);
 }
 
@@ -111,6 +125,9 @@ li {
 }
 
 #cancel {
+  min-width: 90px;
+  padding: 5px 12px;
+  border-radius: 18px;
   background: linear-gradient(135deg, #f44336, #d32f2f);
 }
 
@@ -118,8 +135,28 @@ li {
   background: linear-gradient(135deg, #d32f2f, #b71c1c);
 }
 
-.notes {
-  padding: 10px;
-  font-size: 12px;
-  white-space: pre;
+
+/* ===== Responsive Styles ===== */
+@media (min-width: 400px) {
+  .button-container {
+    max-width: 300px;
+    gap: 12px;
+  }
+
+  .action-buttons {
+    gap: 20px;
+  }
+
+  .button {
+    min-width: 100px;
+    padding: 6px 14px;
+    height: 38px;
+    border-radius: 22px;
+  }
+
+  #finish,
+  #cancel {
+    width: 120px;
+  }
 }
+
